@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 	"net"
-	"github.com/Cursed-Ninja/Redis-clone/resp"
+	"strings"
 )
 
 func main() {
@@ -28,15 +28,37 @@ func main() {
 
 	for {
 		// read message from client
-		resp := resp.NewResp(conn)
+		resp := NewResp(conn)
 		value, err := resp.Read()
 		if err != nil {
-			log.Fatalln("Error reading from client: ", err.Error())
+			log.Println("Error reading from client: ", err.Error())
+			continue
 		}
 
 		log.Println(value)
 
-		// ignore request and send back a PONG
-		conn.Write([]byte("+OK\r\n"))
+		if value.typ != "array" {
+			log.Println("Invalid request, expected array")
+			continue
+		}
+
+		if len(value.array) == 0 {
+			log.Println("Invalid request, expected array length > 0")
+			continue
+		}
+
+		command := strings.ToUpper(value.array[0].bulk)
+		args := value.array[1:]
+
+		writer := NewWriter(conn)
+		handler, ok := Handlers[command]
+		if !ok {
+			log.Println("Invalid command: ", command)
+			writer.Write(Value{typ: "string", str: ""})
+			continue
+		}
+
+		result := handler(args)
+		writer.Write(result)
 	}
 }
